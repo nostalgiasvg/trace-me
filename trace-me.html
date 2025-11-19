@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracing Camera</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier Prime', 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #camera-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #overlay-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            display: none;
+        }
+
+        #controls {
+            background: rgba(26, 26, 26, 0.95);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            border-top: 1px solid #333;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #999;
+            min-width: 80px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            min-width: 150px;
+            height: 2px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+
+        .opacity-value {
+            font-size: 14px;
+            color: #fff;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        button {
+            background: #fff;
+            color: #1a1a1a;
+            border: none;
+            padding: 12px 24px;
+            font-family: inherit;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: #e0e0e0;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.secondary {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #fff;
+        }
+
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #status {
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+            padding: 5px;
+        }
+
+        .has-image #overlay-image {
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            #controls {
+                padding: 15px;
+                gap: 12px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 11px;
+            }
+
+            label {
+                font-size: 11px;
+                min-width: 70px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="camera-container">
+        <video id="camera-feed" autoplay playsinline></video>
+        <img id="overlay-image" alt="Overlay">
+    </div>
+
+    <div id="controls">
+        <div class="control-group">
+            <div class="control-row">
+                <label>Opacidad</label>
+                <input type="range" id="opacity-slider" min="0" max="100" value="50">
+                <span class="opacity-value" id="opacity-value">50%</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="upload-btn">Cargar Imagen</button>
+            <button id="clear-btn" class="secondary">Limpiar</button>
+            <button id="flip-camera-btn" class="secondary">Cambiar Cámara</button>
+        </div>
+
+        <div id="status">Carga una imagen para comenzar a trazar</div>
+    </div>
+
+    <input type="file" id="file-input" accept="image/*">
+
+    <script>
+        let currentStream = null;
+        let facingMode = 'environment'; // Start with back camera on mobile
+
+        // Elements
+        const videoElement = document.getElementById('camera-feed');
+        const overlayImage = document.getElementById('overlay-image');
+        const cameraContainer = document.getElementById('camera-container');
+        const opacitySlider = document.getElementById('opacity-slider');
+        const opacityValue = document.getElementById('opacity-value');
+        const uploadBtn = document.getElementById('upload-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const flipCameraBtn = document.getElementById('flip-camera-btn');
+        const fileInput = document.getElementById('file-input');
+        const status = document.getElementById('status');
+
+        // Initialize camera
+        async function startCamera() {
+            try {
+                // Stop existing stream if any
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        facingMode: facingMode,
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                };
+
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = currentStream;
+                status.textContent = overlayImage.src ? 'Listo para trazar' : 'Carga una imagen para comenzar a trazar';
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                status.textContent = 'Error: No se pudo acceder a la cámara';
+            }
+        }
+
+        // Opacity control
+        opacitySlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            overlayImage.style.opacity = value / 100;
+            opacityValue.textContent = value + '%';
+        });
+
+        // Upload image
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    overlayImage.src = event.target.result;
+                    cameraContainer.classList.add('has-image');
+                    status.textContent = 'Imagen cargada - Ajusta la opacidad según necesites';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Clear image
+        clearBtn.addEventListener('click', () => {
+            overlayImage.src = '';
+            cameraContainer.classList.remove('has-image');
+            fileInput.value = '';
+            status.textContent = 'Carga una imagen para comenzar a trazar';
+        });
+
+        // Flip camera
+        flipCameraBtn.addEventListener('click', () => {
+            facingMode = facingMode === 'environment' ? 'user' : 'environment';
+            startCamera();
+        });
+
+        // Initialize
+        startCamera();
+
+        // Set initial opacity
+        overlayImage.style.opacity = 0.5;
+
+        // Handle page visibility for camera management
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+            } else {
+                startCamera();
+            }
+        });
+    </script>
+</body>
+</html>
