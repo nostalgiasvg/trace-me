@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracing Camera</title>
+    <title>Trace-me</title>
     <style>
         * {
             margin: 0;
@@ -21,23 +21,32 @@
             flex-direction: column;
         }
 
-        #controls {
-            background: rgba(26, 26, 26, 0.95);
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            border-bottom: 1px solid #333;
-            order: 1;
-        }
-
         #camera-container {
             position: relative;
             flex: 1;
             width: 100%;
             overflow: hidden;
             background: #000;
-            order: 2;
+        }
+
+        #controls {
+            background: rgba(26, 26, 26, 0.95);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border-top: 1px solid #333;
+            transition: transform 0.3s ease;
+        }
+
+        #controls.minimized {
+            transform: translateY(calc(100% - 50px));
+        }
+
+        #controls.minimized .control-group,
+        #controls.minimized .button-group,
+        #controls.minimized #status {
+            display: none;
         }
 
         #camera-feed {
@@ -147,6 +156,33 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
+        #toggle-controls {
+            position: absolute;
+            top: 15px;
+            right: 0;
+            background: transparent;
+            border: none;
+            padding: 8px 15px;
+            font-size: 20px;
+            cursor: pointer;
+            color: #fff;
+            z-index: 10;
+            transition: transform 0.2s;
+        }
+
+        #toggle-controls:hover {
+            transform: scale(1.1);
+            background: transparent;
+        }
+
+        #controls.minimized #toggle-controls {
+            transform: rotate(180deg);
+        }
+
+        #controls.minimized #toggle-controls:hover {
+            transform: rotate(180deg) scale(1.1);
+        }
+
         input[type="file"] {
             display: none;
         }
@@ -162,6 +198,14 @@
             color: #666;
             text-align: center;
             padding: 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #status span {
+            display: block;
         }
 
         .has-image #overlay-image {
@@ -187,7 +231,14 @@
     </style>
 </head>
 <body>
+    <div id="camera-container">
+        <video id="camera-feed" autoplay playsinline></video>
+        <img id="overlay-image" alt="Overlay">
+    </div>
+
     <div id="controls">
+        <button id="toggle-controls">▼</button>
+        
         <div class="control-group">
             <div class="control-row">
                 <label>Opacidad</label>
@@ -204,15 +255,18 @@
         <div class="button-group">
             <button id="upload-btn">Cargar Imagen</button>
             <button id="clear-btn" class="secondary">Limpiar</button>
-            <button id="flip-camera-btn" class="secondary">Cambiar Cámara</button>
         </div>
 
-        <div id="status">Carga una imagen para comenzar a trazar</div>
-    </div>
-
-    <div id="camera-container">
-        <video id="camera-feed" autoplay playsinline></video>
-        <img id="overlay-image" alt="Overlay">
+        <div id="status">
+            <pre style="font-size: 8px; line-height: 1; margin: 0; color: #666;">
+   ___   
+  /   \  
+ | O O | 
+  \___/  
+   |||   
+  /   \  </pre>
+            <span>Carga una imagen para comenzar a trazar</span>
+        </div>
     </div>
 
     <input type="file" id="file-input" accept="image/*">
@@ -225,13 +279,14 @@
         const videoElement = document.getElementById('camera-feed');
         const overlayImage = document.getElementById('overlay-image');
         const cameraContainer = document.getElementById('camera-container');
+        const controlsPanel = document.getElementById('controls');
+        const toggleBtn = document.getElementById('toggle-controls');
         const opacitySlider = document.getElementById('opacity-slider');
         const opacityValue = document.getElementById('opacity-value');
         const zoomSlider = document.getElementById('zoom-slider');
         const zoomValue = document.getElementById('zoom-value');
         const uploadBtn = document.getElementById('upload-btn');
         const clearBtn = document.getElementById('clear-btn');
-        const flipCameraBtn = document.getElementById('flip-camera-btn');
         const fileInput = document.getElementById('file-input');
         const status = document.getElementById('status');
 
@@ -302,10 +357,10 @@
             status.textContent = 'Carga una imagen para comenzar a trazar';
         });
 
-        // Flip camera
-        flipCameraBtn.addEventListener('click', () => {
-            facingMode = facingMode === 'environment' ? 'user' : 'environment';
-            startCamera();
+        // Toggle controls visibility
+        toggleBtn.addEventListener('click', () => {
+            controlsPanel.classList.toggle('minimized');
+            toggleBtn.textContent = controlsPanel.classList.contains('minimized') ? '▲' : '▼';
         });
 
         // Initialize
